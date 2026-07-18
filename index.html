@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Personal Dictionary</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:30px}
+.container{max-width:900px;margin:auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 5px 15px rgba(0,0,0,.15)}
+h1{text-align:center;color:#355CDE}
+.search{display:flex;gap:10px;flex-wrap:wrap}
+input{flex:1;padding:12px;border-radius:8px;border:1px solid #ccc}
+button{padding:12px 16px;border:none;border-radius:8px;background:#355CDE;color:#fff;cursor:pointer}
+#result,#history,#favorites{margin-top:20px;padding:15px;border:1px solid #ddd;border-radius:8px}
+.dark{background:#111;color:#eee}
+.dark .container{background:#222}
+.tag{display:inline-block;background:#355CDE;color:#fff;padding:3px 8px;border-radius:20px;margin:2px;font-size:12px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="container">
+<h1>📖 My Personal Dictionary</h1>
+<div class="search">
+<input id="wordInput" placeholder="Enter a word">
+<button onclick="searchWord()">Search</button>
+<button onclick="toggleDark()">🌙</button>
+</div>
+<div id="result"></div>
+<div id="history"><h3>Recent Searches</h3><ul id="historyList"></ul></div>
+<div id="favorites"><h3>Favorites</h3><ul id="favList"></ul></div>
+</div>
+<script>
+let current={};
+
+if(localStorage.theme==="dark"){
+ document.body.classList.add("dark");
+}
+
+loadFavs();
+loadHistory();
+
+async function searchWord(){
+ const word=document.getElementById("wordInput").value.trim();
+ if(!word)return;
+ document.getElementById("result").innerHTML="Loading...";
+ try{
+  const res=await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/"+word);
+  const data=await res.json();
+  if(data.title){
+   document.getElementById("result").innerHTML="<b>Word not found.</b>";
+   return;
+  }
+  const d=data[0];
+  const m=d.meanings[0];
+  const def=m.definitions[0];
+  const audio=(d.phonetics.find(x=>x.audio)||{}).audio||"";
+  const phon=(d.phonetics.find(x=>x.text)||{}).text||"";
+  const syn=(m.synonyms||[]).slice(0,5);
+  const ant=(m.antonyms||[]).slice(0,5);
+
+  current={
+   word:d.word,
+   phonetics:phon,
+   definition:def.definition,
+   example:def.example||"No example available."
+  };
+
+  addHistory(d.word);
+
+  document.getElementById("result").innerHTML=`
+   <h2>${d.word}</h2>
+   <p><b>Part of Speech:</b> ${m.partOfSpeech}</p>
+   <p><b>Phonetics:</b> ${phon}
+   ${audio?`<button onclick="new Audio('${audio}').play()">🔊</button>`:""}
+   </p>
+   <p><b>Definition:</b> ${def.definition}</p>
+   <p><b>Example:</b> ${def.example||"No example available."}</p>
+   <p><b>Synonyms:</b> ${syn.length?syn.map(s=>`<span class='tag'>${s}</span>`).join(""):"None"}</p>
+   <p><b>Antonyms:</b> ${ant.length?ant.map(s=>`<span class='tag'>${s}</span>`).join(""):"None"}</p>
+   <button onclick="saveFav()">⭐ Favorite</button>
+   <button onclick="copyDef()">📋 Copy</button>
+   <button onclick="downloadPDF()">📄 PDF</button>
+  `;
+ }catch(e){
+  document.getElementById("result").innerHTML="Error loading data.";
+ }
+}
+
+function toggleDark(){
+ document.body.classList.toggle("dark");
+ localStorage.theme=document.body.classList.contains("dark")?"dark":"light";
+}
+
+function addHistory(w){
+ let h=JSON.parse(localStorage.history||"[]");
+ h=[w,...h.filter(x=>x!==w)].slice(0,10);
+ localStorage.history=JSON.stringify(h);
+ loadHistory();
+}
+
+function loadHistory(){
+ const h=JSON.parse(localStorage.history||"[]");
+ historyList.innerHTML=h.map(x=>`<li onclick="document.getElementById('wordInput').value='${x}';searchWord();" style="cursor:pointer">${x}</li>`).join("");
+}
+
+function saveFav(){
+ let f=JSON.parse(localStorage.favs||"[]");
+ if(!f.find(x=>x.word===current.word)){
+   f.push(current);
+   localStorage.favs=JSON.stringify(f);
+ }
+ loadFavs();
+}
+
+function loadFavs(){
+ let f=JSON.parse(localStorage.favs||"[]");
+ favList.innerHTML=f.map((x,i)=>`<li>${x.word} <button onclick="removeFav(${i})">❌</button></li>`).join("");
+}
+
+function removeFav(i){
+ let f=JSON.parse(localStorage.favs||"[]");
+ f.splice(i,1);
+ localStorage.favs=JSON.stringify(f);
+ loadFavs();
+}
+
+function copyDef(){
+ navigator.clipboard.writeText(current.definition);
+ alert("Definition copied!");
+}
+
+function downloadPDF(){
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF();
+ doc.text(current.word,20,20);
+ doc.text("Phonetics: "+current.phonetics,20,35);
+ doc.text("Definition:",20,50);
+ doc.text(current.definition,20,60,{maxWidth:170});
+ doc.text("Example:",20,90);
+ doc.text(current.example,20,100,{maxWidth:170});
+ doc.save(current.word+".pdf");
+}
+
+wordInput.addEventListener("keypress",e=>{
+ if(e.key==="Enter")searchWord();
+});
+</script>
+</body>
+</html>
